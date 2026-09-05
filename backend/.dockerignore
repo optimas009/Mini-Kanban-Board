@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.env
+*.log
+*.tsbuildinfo
+# Regenerated inside the image by `prisma generate`.
+src/generated
+Dockerfile
+.dockerignore

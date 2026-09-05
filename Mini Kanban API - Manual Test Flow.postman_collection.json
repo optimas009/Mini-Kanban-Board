@@ -1,0 +1,2166 @@
+{
+  "info": {
+    "_postman_id": "fe8f3707-3195-4603-951b-a31a67cc253a",
+    "name": "Mini Kanban API - Manual Test Flow",
+    "description": "Manual Postman flow for the Mini Kanban NestJS API.\n\nRun requests one-by-one in numeric order. The collection uses post-response scripts only to capture tokens and IDs for later requests; there are no automated assertion tests.\n\nPrerequisites:\n- Docker PostgreSQL running\n- NestJS backend running on http://localhost:3001\n\nIf you want to start over, run request 00.1 again. It creates new unique test emails and clears saved IDs/tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "49202563",
+    "_collection_link": "https://go.postman.co/collection/49202563-fe8f3707-3195-4603-951b-a31a67cc253a?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "00 - Setup",
+      "item": [
+        {
+          "name": "00.1 Initialize variables + Health check",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  const runId = Date.now().toString();",
+                  "  pm.collectionVariables.set(\"runId\", runId);",
+                  "  pm.collectionVariables.set(\"ownerEmail\", `owner+${runId}@example.com`);",
+                  "  pm.collectionVariables.set(\"memberEmail\", `member+${runId}@example.com`);",
+                  "",
+                  "  [",
+                  "    \"ownerToken\", \"memberToken\", \"ownerId\", \"memberId\",",
+                  "    \"boardId\", \"memberPrivateBoardId\",",
+                  "    \"todoColumnId\", \"inProgressColumnId\", \"doneColumnId\",",
+                  "    \"privateColumnId\", \"memberSharedColumnId\",",
+                  "    \"task1Id\", \"task2Id\", \"task3Id\", \"memberTaskId\"",
+                  "  ].forEach((key) => pm.collectionVariables.set(key, \"\"));",
+                  "",
+                  "  console.log(\"New manual test run:\", runId);",
+                  "  console.log(\"Owner email:\", pm.collectionVariables.get(\"ownerEmail\"));",
+                  "  console.log(\"Member email:\", pm.collectionVariables.get(\"memberEmail\"));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Health check returns 200\", () => pm.response.to.have.status(200));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Reports the API is up\", () => {",
+                  "    pm.expect(body.status).to.eql(\"ok\");",
+                  "    pm.expect(body.message).to.eql(\"Mini Kanban API\");",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ""
+              ]
+            },
+            "description": "Run this first. It creates unique owner/member emails and clears saved tokens/IDs. Expected response: API status/health object."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 - Authentication",
+      "item": [
+        {
+          "name": "01.1 Register owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Registers the owner (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Returns a user and an access token\", () => {",
+                  "    pm.expect(body.user.id).to.be.a(\"string\");",
+                  "    pm.expect(body.user.email).to.eql(pm.collectionVariables.get(\"ownerEmail\"));",
+                  "    pm.expect(body.accessToken).to.be.a(\"string\");",
+                  "  });",
+                  "  pm.test(\"Never returns the password or its hash\", () => {",
+                  "    pm.expect(JSON.stringify(body)).to.not.include(pm.collectionVariables.get(\"password\"));",
+                  "    pm.expect(body.user).to.not.have.property(\"passwordHash\");",
+                  "  });",
+                  "  pm.collectionVariables.set(\"ownerId\", body.user.id);",
+                  "  pm.collectionVariables.set(\"ownerToken\", body.accessToken);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{ownerName}}\",\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Expected: new user object + accessToken."
+          },
+          "response": []
+        },
+        {
+          "name": "01.2 Login owner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  // Nest returns 201 for POST by default and the controller does not override it.",
+                  "  pm.test(\"Logs the owner in (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Returns the same user and a fresh token\", () => {",
+                  "    pm.expect(body.user.id).to.eql(pm.collectionVariables.get(\"ownerId\"));",
+                  "    pm.expect(body.accessToken).to.be.a(\"string\");",
+                  "  });",
+                  "  pm.collectionVariables.set(\"ownerToken\", body.accessToken);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Expected: owner user object + fresh accessToken."
+          },
+          "response": []
+        },
+        {
+          "name": "01.3 Register member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Registers the member (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Returns a distinct user\", () => {",
+                  "    pm.expect(body.user.id).to.be.a(\"string\");",
+                  "    pm.expect(body.user.id).to.not.eql(pm.collectionVariables.get(\"ownerId\"));",
+                  "  });",
+                  "  pm.collectionVariables.set(\"memberId\", body.user.id);",
+                  "  pm.collectionVariables.set(\"memberToken\", body.accessToken);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{memberName}}\",\n  \"email\": \"{{memberEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Creates the second registered user used to test board sharing."
+          },
+          "response": []
+        },
+        {
+          "name": "01.4 Login member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Logs the member in (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Returns the member and a token\", () => {",
+                  "    pm.expect(body.user.id).to.eql(pm.collectionVariables.get(\"memberId\"));",
+                  "    pm.expect(body.accessToken).to.be.a(\"string\");",
+                  "  });",
+                  "  pm.collectionVariables.set(\"memberToken\", body.accessToken);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{memberEmail}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Expected: member user object + fresh accessToken."
+          },
+          "response": []
+        },
+        {
+          "name": "01.5 Protected route WITHOUT token (expect 401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Negative check. No Authorization header is sent. Expected HTTP 401 Unauthorized."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Rejects an unauthenticated request (401)\", () => pm.response.to.have.status(401));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Boards and Sharing",
+      "item": [
+        {
+          "name": "02.1 Create owner board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates the board (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Assigns the caller as owner\", () => {",
+                  "    pm.expect(body.id).to.be.a(\"string\");",
+                  "    pm.expect(body.ownerId).to.eql(pm.collectionVariables.get(\"ownerId\"));",
+                  "    pm.expect(body.name).to.eql(\"Assessment Board\");",
+                  "  });",
+                  "  pm.collectionVariables.set(\"boardId\", body.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Assessment Board\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Expected: new board owned by the owner user."
+          },
+          "response": []
+        },
+        {
+          "name": "02.2 List boards as owner",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Expected: owner can see Assessment Board."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Lists boards (200)\", () => pm.response.to.have.status(200));",
+                  "  const boards = pm.response.json();",
+                  "  pm.test(\"Includes the new board\", () => {",
+                  "    pm.expect(boards).to.be.an(\"array\");",
+                  "    pm.expect(boards.map((b) => b.id)).to.include(pm.collectionVariables.get(\"boardId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.3 Get owner board",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Expected: board details with empty members/columns initially."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Reads the board (200)\", () => pm.response.to.have.status(200));",
+                  "  const board = pm.response.json();",
+                  "  pm.test(\"Returns the full board shape\", () => {",
+                  "    pm.expect(board.id).to.eql(pm.collectionVariables.get(\"boardId\"));",
+                  "    pm.expect(board.columns).to.be.an(\"array\");",
+                  "    pm.expect(board.members).to.be.an(\"array\");",
+                  "    pm.expect(board.owner.id).to.eql(pm.collectionVariables.get(\"ownerId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.4 Rename owner board",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mini Kanban Assessment\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Expected: board name changes."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Owner renames the board (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Name is updated\", () => {",
+                  "    pm.expect(pm.response.json().name).to.eql(\"Mini Kanban Assessment\");",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.5 Share board with registered member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{memberEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}",
+                "members"
+              ]
+            },
+            "description": "Expected: Board shared successfully and member details."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Shares the board (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Returns the added member\", () => {",
+                  "    pm.expect(body.member.id).to.eql(pm.collectionVariables.get(\"memberId\"));",
+                  "    pm.expect(body.member.email).to.eql(pm.collectionVariables.get(\"memberEmail\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.6 List boards as member",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Expected: shared Mini Kanban Assessment board is visible to member."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member lists boards (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Shared board now appears for the member\", () => {",
+                  "    const ids = pm.response.json().map((b) => b.id);",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get(\"boardId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.7 Get shared board as member",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Expected: member can access the shared board."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member can read the shared board (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Member is listed on the board\", () => {",
+                  "    const ids = pm.response.json().members.map((m) => m.user.id);",
+                  "    pm.expect(ids).to.include(pm.collectionVariables.get(\"memberId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.8 Member tries to rename shared board (expect 403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Member Should Not Rename This\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Negative authorization check. Expected HTTP 403 because only owner may update board metadata."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member cannot rename the board (403)\", () => pm.response.to.have.status(403));",
+                  "  pm.test(\"403 rather than 404, because the member can see the board\", () => {",
+                  "    pm.expect(pm.response.json().message).to.include(\"owner\");",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.9 Create private board as member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member creates their own board (201)\", () => pm.response.to.have.status(201));",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"Member owns it\", () => {",
+                  "    pm.expect(body.ownerId).to.eql(pm.collectionVariables.get(\"memberId\"));",
+                  "  });",
+                  "  pm.collectionVariables.set(\"memberPrivateBoardId\", body.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Member Private Board\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Used for cross-board access checks."
+          },
+          "response": []
+        },
+        {
+          "name": "02.10 Owner tries to open member private board (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{memberPrivateBoardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{memberPrivateBoardId}}"
+              ]
+            },
+            "description": "Negative cross-board access check. Expected HTTP 404 because owner is neither owner nor member of this board."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Outsider gets 404, not 403\", () => pm.response.to.have.status(404));",
+                  "  pm.test(\"Board existence is not disclosed\", () => {",
+                  "    pm.expect(pm.response.json().message).to.eql(\"Board not found\");",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Columns",
+      "item": [
+        {
+          "name": "03.1 Create TODO column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates the first column (201)\", () => pm.response.to.have.status(201));",
+                  "  const column = pm.response.json();",
+                  "  pm.test(\"First column is at position 0\", () => {",
+                  "    pm.expect(column.position).to.eql(0);",
+                  "    pm.expect(column.color).to.eql(\"navy\");",
+                  "  });",
+                  "  pm.collectionVariables.set(\"todoColumnId\", column.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Todo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}",
+                "columns"
+              ]
+            },
+            "description": "Creates Todo column."
+          },
+          "response": []
+        },
+        {
+          "name": "03.2 Create IN PROGRESS column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates the second column (201)\", () => pm.response.to.have.status(201));",
+                  "  const column = pm.response.json();",
+                  "  pm.test(\"Second column is appended at position 1\", () => pm.expect(column.position).to.eql(1));",
+                  "  pm.collectionVariables.set(\"inProgressColumnId\", column.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"In Progress\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}",
+                "columns"
+              ]
+            },
+            "description": "Creates In Progress column."
+          },
+          "response": []
+        },
+        {
+          "name": "03.3 Create DONE column",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates the third column (201)\", () => pm.response.to.have.status(201));",
+                  "  const column = pm.response.json();",
+                  "  pm.test(\"Third column is appended at position 2\", () => pm.expect(column.position).to.eql(2));",
+                  "  pm.collectionVariables.set(\"doneColumnId\", column.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Done\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}",
+                "columns"
+              ]
+            },
+            "description": "Creates Done column."
+          },
+          "response": []
+        },
+        {
+          "name": "03.4 Rename TODO column",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"To Do\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{todoColumnId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "columns",
+                "{{todoColumnId}}"
+              ]
+            },
+            "description": "Expected: column title becomes To Do."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Renames the column (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Title is updated and position is untouched\", () => {",
+                  "    const column = pm.response.json();",
+                  "    pm.expect(column.title).to.eql(\"To Do\");",
+                  "    pm.expect(column.position).to.eql(0);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.5 Move DONE column to position 0",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"position\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{doneColumnId}}/move",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "columns",
+                "{{doneColumnId}}",
+                "move"
+              ]
+            },
+            "description": "Checks column ordering. Expected: Done moves to position 0 and other positions shift."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Moves the column (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Done is now first\", () => pm.expect(pm.response.json().position).to.eql(0));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.6 Member creates column on shared board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member can add a column to a shared board (201)\", () => pm.response.to.have.status(201));",
+                  "  const column = pm.response.json();",
+                  "  pm.test(\"Appended after the existing three\", () => pm.expect(column.position).to.eql(3));",
+                  "  pm.collectionVariables.set(\"memberSharedColumnId\", column.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Member Ideas\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/columns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}",
+                "columns"
+              ]
+            },
+            "description": "Confirms a shared member can collaborate on board contents."
+          },
+          "response": []
+        },
+        {
+          "name": "03.7 Create column on member private board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates a column on the member's own board (201)\", () => pm.response.to.have.status(201));",
+                  "  pm.collectionVariables.set(\"privateColumnId\", pm.response.json().id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Private\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{memberPrivateBoardId}}/columns",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{memberPrivateBoardId}}",
+                "columns"
+              ]
+            },
+            "description": "Used later to verify a task cannot move across boards."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 - Tasks and Ordering",
+      "item": [
+        {
+          "name": "04.1 Create Task 1 in To Do",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates task 1 (201)\", () => pm.response.to.have.status(201));",
+                  "  const task = pm.response.json();",
+                  "  pm.test(\"First task is at position 0\", () => pm.expect(task.position).to.eql(0));",
+                  "  pm.collectionVariables.set(\"task1Id\", task.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Build login screen\",\n  \"description\": \"Create login UI and connect it to the API.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{todoColumnId}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "columns",
+                "{{todoColumnId}}",
+                "tasks"
+              ]
+            },
+            "description": "Expected: task is appended at the end of the target column."
+          },
+          "response": []
+        },
+        {
+          "name": "04.2 Create Task 2 in To Do",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates task 2 (201)\", () => pm.response.to.have.status(201));",
+                  "  const task = pm.response.json();",
+                  "  pm.test(\"Second task is appended at position 1\", () => pm.expect(task.position).to.eql(1));",
+                  "  pm.collectionVariables.set(\"task2Id\", task.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Build board page\",\n  \"description\": \"Render columns and task cards.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{todoColumnId}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "columns",
+                "{{todoColumnId}}",
+                "tasks"
+              ]
+            },
+            "description": "Expected: task is appended at the end of the target column."
+          },
+          "response": []
+        },
+        {
+          "name": "04.3 Create Task 3 in To Do",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Creates task 3 (201)\", () => pm.response.to.have.status(201));",
+                  "  const task = pm.response.json();",
+                  "  pm.test(\"Third task is appended at position 2\", () => pm.expect(task.position).to.eql(2));",
+                  "  pm.collectionVariables.set(\"task3Id\", task.id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Add drag and drop\",\n  \"description\": \"Use dnd-kit for sortable cards.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{todoColumnId}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "columns",
+                "{{todoColumnId}}",
+                "tasks"
+              ]
+            },
+            "description": "Expected: task is appended at the end of the target column."
+          },
+          "response": []
+        },
+        {
+          "name": "04.4 Update Task 1",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Build authentication UI\",\n  \"description\": \"Register, login, token handling, and protected navigation.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{task1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task1Id}}"
+              ]
+            },
+            "description": "Expected: task title/description update."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Updates the task (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Title and description are updated, position is not\", () => {",
+                  "    const task = pm.response.json();",
+                  "    pm.expect(task.title).to.eql(\"Build authentication UI\");",
+                  "    pm.expect(task.position).to.eql(0);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.5 Reorder Task 2 to position 0 in same column",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"columnId\": \"{{todoColumnId}}\",\n  \"position\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{task2Id}}/move",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task2Id}}",
+                "move"
+              ]
+            },
+            "description": "Same-column reorder check. Other task positions should shift without duplicates."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Reorders within the same column (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Task 2 is now first\", () => {",
+                  "    const task = pm.response.json();",
+                  "    pm.expect(task.position).to.eql(0);",
+                  "    pm.expect(task.columnId).to.eql(pm.collectionVariables.get(\"todoColumnId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.6 Move Task 1 to In Progress position 0",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"columnId\": \"{{inProgressColumnId}}\",\n  \"position\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{task1Id}}/move",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task1Id}}",
+                "move"
+              ]
+            },
+            "description": "Cross-column move within the same board."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Moves across columns (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Task 1 is now first in In Progress\", () => {",
+                  "    const task = pm.response.json();",
+                  "    pm.expect(task.columnId).to.eql(pm.collectionVariables.get(\"inProgressColumnId\"));",
+                  "    pm.expect(task.position).to.eql(0);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.7 Member creates task on shared board",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member can add a task to a shared board (201)\", () => pm.response.to.have.status(201));",
+                  "  pm.collectionVariables.set(\"memberTaskId\", pm.response.json().id);",
+                  "})();"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Member contribution\",\n  \"description\": \"Created by the shared board member.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/columns/{{memberSharedColumnId}}/tasks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "columns",
+                "{{memberSharedColumnId}}",
+                "tasks"
+              ]
+            },
+            "description": "Confirms shared members can create board content."
+          },
+          "response": []
+        },
+        {
+          "name": "04.8 Try moving Task 3 to a column on another board (expect 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"columnId\": \"{{privateColumnId}}\",\n  \"position\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{task3Id}}/move",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task3Id}}",
+                "move"
+              ]
+            },
+            "description": "Negative ordering/security check. Expected HTTP 400: tasks cannot be moved to a different board."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Cross-board move is rejected (400)\", () => pm.response.to.have.status(400));",
+                  "  pm.test(\"Explains why\", () => {",
+                  "    pm.expect(pm.response.json().message).to.include(\"different board\");",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.9 Get board after task moves",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Inspect columns/tasks and verify positions are stable and ordered."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Reads the board back (200)\", () => pm.response.to.have.status(200));",
+                  "  const board = pm.response.json();",
+                  "",
+                  "  pm.test(\"Column positions are contiguous from 0\", () => {",
+                  "    const positions = board.columns.map((c) => c.position);",
+                  "    pm.expect(positions).to.eql(positions.map((_, i) => i));",
+                  "  });",
+                  "",
+                  "  pm.test(\"Task positions in every column are contiguous from 0\", () => {",
+                  "    board.columns.forEach((column) => {",
+                  "      const positions = column.tasks.map((t) => t.position);",
+                  "      pm.expect(positions, column.title).to.eql(positions.map((_, i) => i));",
+                  "    });",
+                  "  });",
+                  "",
+                  "  pm.test(\"Moved task landed in In Progress and left To Do\", () => {",
+                  "    const inProgress = board.columns.find((c) => c.id === pm.collectionVariables.get(\"inProgressColumnId\"));",
+                  "    const todo = board.columns.find((c) => c.id === pm.collectionVariables.get(\"todoColumnId\"));",
+                  "    const task1 = pm.collectionVariables.get(\"task1Id\");",
+                  "    pm.expect(inProgress.tasks.map((t) => t.id)).to.include(task1);",
+                  "    pm.expect(todo.tasks.map((t) => t.id)).to.not.include(task1);",
+                  "  });",
+                  "",
+                  "  pm.test(\"No task appears in more than one column\", () => {",
+                  "    const ids = board.columns.flatMap((c) => c.tasks.map((t) => t.id));",
+                  "    pm.expect(ids.length).to.eql(new Set(ids).size);",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04.10 Delete Task 3",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tasks/{{task3Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tasks",
+                "{{task3Id}}"
+              ]
+            },
+            "description": "Expected: task deleted and later tasks in that column shift down if necessary."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Deletes the task (200)\", () => pm.response.to.have.status(200));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Authorization Checks",
+      "item": [
+        {
+          "name": "05.1 Member tries to delete shared board (expect 403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Negative authorization check. Expected HTTP 403; only owner may delete the board."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Member cannot delete the board (403)\", () => pm.response.to.have.status(403));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.2 Owner removes member from shared board",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}/members/{{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}",
+                "members",
+                "{{memberId}}"
+              ]
+            },
+            "description": "Expected: member access is removed."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Owner removes the member (200)\", () => pm.response.to.have.status(200));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05.3 Removed member tries to open board (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Negative authorization check after removal. Expected HTTP 404."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Access is revoked immediately (404)\", () => pm.response.to.have.status(404));",
+                  "  pm.test(\"Former member can no longer tell the board exists\", () => {",
+                  "    pm.expect(pm.response.json().message).to.eql(\"Board not found\");",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 - Cleanup",
+      "item": [
+        {
+          "name": "06.1 Delete owner board",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{boardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{boardId}}"
+              ]
+            },
+            "description": "Deletes the assessment board. Columns/tasks/members should cascade-delete."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Deletes the owner board (200)\", () => pm.response.to.have.status(200));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06.2 Delete member private board",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards/{{memberPrivateBoardId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards",
+                "{{memberPrivateBoardId}}"
+              ]
+            },
+            "description": "Deletes the private board created for the cross-board test."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Deletes the member board (200)\", () => pm.response.to.have.status(200));",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06.3 Final list as owner",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{ownerToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Expected: assessment board is gone."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Lists boards (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Owner board is gone\", () => {",
+                  "    const ids = pm.response.json().map((b) => b.id);",
+                  "    pm.expect(ids).to.not.include(pm.collectionVariables.get(\"boardId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06.4 Final list as member",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{memberToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/boards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "boards"
+              ]
+            },
+            "description": "Expected: member private board is gone and shared board was already deleted."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(() => {",
+                  "  pm.test(\"Lists boards (200)\", () => pm.response.to.have.status(200));",
+                  "  pm.test(\"Both boards are gone for the member\", () => {",
+                  "    const ids = pm.response.json().map((b) => b.id);",
+                  "    pm.expect(ids).to.not.include(pm.collectionVariables.get(\"boardId\"));",
+                  "    pm.expect(ids).to.not.include(pm.collectionVariables.get(\"memberPrivateBoardId\"));",
+                  "  });",
+                  "})();"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001"
+    },
+    {
+      "key": "ownerName",
+      "value": "Shams Owner"
+    },
+    {
+      "key": "memberName",
+      "value": "Board Member"
+    },
+    {
+      "key": "password",
+      "value": "password123"
+    },
+    {
+      "key": "runId",
+      "value": ""
+    },
+    {
+      "key": "ownerEmail",
+      "value": ""
+    },
+    {
+      "key": "memberEmail",
+      "value": ""
+    },
+    {
+      "key": "ownerToken",
+      "value": ""
+    },
+    {
+      "key": "memberToken",
+      "value": ""
+    },
+    {
+      "key": "ownerId",
+      "value": ""
+    },
+    {
+      "key": "memberId",
+      "value": ""
+    },
+    {
+      "key": "boardId",
+      "value": ""
+    },
+    {
+      "key": "memberPrivateBoardId",
+      "value": ""
+    },
+    {
+      "key": "todoColumnId",
+      "value": ""
+    },
+    {
+      "key": "inProgressColumnId",
+      "value": ""
+    },
+    {
+      "key": "doneColumnId",
+      "value": ""
+    },
+    {
+      "key": "privateColumnId",
+      "value": ""
+    },
+    {
+      "key": "memberSharedColumnId",
+      "value": ""
+    },
+    {
+      "key": "task1Id",
+      "value": ""
+    },
+    {
+      "key": "task2Id",
+      "value": ""
+    },
+    {
+      "key": "task3Id",
+      "value": ""
+    },
+    {
+      "key": "memberTaskId",
+      "value": ""
+    }
+  ]
+}

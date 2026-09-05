@@ -1,0 +1,14 @@
+node_modules
+dist
+coverage
+
+# Environment variables
+.env
+
+# Generated Prisma Client
+/src/generated/prisma
+
+# Logs
+*.log
+# Build info
+*.tsbuildinfo

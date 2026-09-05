@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: mini-kanban-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: kanban_user
+      POSTGRES_PASSWORD: kanban_password
+      POSTGRES_DB: mini_kanban
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kanban_user -d mini_kanban"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: mini-kanban-backend
+    restart: unless-stopped
+
+    environment:
+      DATABASE_URL: postgresql://kanban_user:kanban_password@postgres:5432/mini_kanban?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PORT: 3001
+      FRONTEND_URL: http://localhost:3000
+
+    ports:
+      - "3001:3001"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3001/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the client bundle, so it must be the host-reachable URL
+        # rather than the compose-internal http://backend:3001.
+        NEXT_PUBLIC_API_URL: http://localhost:3001
+    container_name: mini-kanban-frontend
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    # Waits for the API to answer, not merely to start, so the first page load
+    # never races an unmigrated database.
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

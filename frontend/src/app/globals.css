@@ -1,0 +1,182 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Archivo:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-stamp: 'Barlow Condensed', 'Arial Narrow', ui-sans-serif, sans-serif;
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+  Signal.
+
+  Kanban is Toyota's signboard system: a card is a physical token showing that
+  work exists and where it sits. So the board is a surface, and cards sit on
+  it rather than floating in soft-shadowed containers.
+
+  Colour discipline: the interface is board, card stock and ink. Every drop of
+  chroma belongs to a column signal, which makes the board the only colourful
+  thing on screen and lets colour actually carry meaning.
+*/
+:root {
+  /* Substrate */
+  --board: #c9c7be;
+  --board-deep: #b3b1a7;
+  --board-edge: #a8a69b;
+
+  /* Card stock */
+  --stock: #f7f6f3;
+  --stock-raised: #fffefb;
+
+  /* Ink */
+  --ink: #1c1d1a;
+  --ink-soft: #5e6058;
+  --ink-faint: #8b8d83;
+  --rule: #cfcdc4;
+
+  /* Status. Used for outcomes, never for decoration. */
+  --alert: #a8321f;
+  --alert-tint: #f6e4e0;
+
+  /* Default signal, overridden per column by [data-signal] */
+  --signal: #1f3a5f;
+  --signal-tint: #e9edf2;
+}
+
+/*
+  The eight column signals, styled as printed tape rather than digital
+  gradients: flat, slightly knocked back, readable against card stock.
+*/
+[data-signal='navy']   { --signal: #1f3a5f; --signal-tint: #e8edf3; }
+[data-signal='blue']   { --signal: #1e6bb8; --signal-tint: #e4eefa; }
+[data-signal='red']    { --signal: #b8382b; --signal-tint: #f8e6e3; }
+[data-signal='yellow'] { --signal: #c08a05; --signal-tint: #fbf0d6; }
+[data-signal='purple'] { --signal: #6f4a9c; --signal-tint: #efe9f7; }
+[data-signal='cyan']   { --signal: #14788c; --signal-tint: #ddeff2; }
+[data-signal='green']  { --signal: #3a7248; --signal-tint: #e3f0e6; }
+[data-signal='slate']  { --signal: #5f6660; --signal-tint: #eaebe9; }
+
+* { box-sizing: border-box; }
+
+html {
+  min-height: 100%;
+  background: var(--board);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background: var(--board);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 { font-family: var(--font-stamp); }
+
+button, input, textarea, select { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+::selection { background: color-mix(in srgb, var(--signal) 28%, transparent); }
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/*
+  The board surface: a fine woven texture so cards read as sitting on
+  something physical. Two hairline grids at different scales, nothing more.
+*/
+.board-surface {
+  background-color: var(--board);
+  background-image:
+    linear-gradient(rgba(0, 0, 0, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, .035) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/*
+  Card stock. A hard offset shadow, no blur: this is the single strongest
+  visual decision in the interface and the reason a card reads as an object
+  rather than a div.
+*/
+.stock {
+  background: var(--stock);
+  border: 1px solid var(--board-edge);
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 rgba(28, 29, 26, .12);
+}
+
+.stock-raised {
+  background: var(--stock-raised);
+  border: 1px solid var(--board-edge);
+  border-radius: 3px;
+  box-shadow: 3px 3px 0 rgba(28, 29, 26, .16);
+}
+
+.stock-flat {
+  background: var(--stock);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+
+/* A signboard label: the one place caps are used, because that is the idiom. */
+.stamp {
+  font-family: var(--font-stamp);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  line-height: 1;
+}
+
+.kanban-scroll { scrollbar-width: thin; scrollbar-color: var(--board-edge) transparent; }
+.kanban-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.kanban-scroll::-webkit-scrollbar-thumb { border-radius: 0; background: var(--board-edge); }
+.kanban-scroll::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+.kanban-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/*
+  Motion. One orchestrated moment on load, plus feedback that answers a
+  direct action. Nothing ambient.
+*/
+@keyframes card-settle {
+  from { opacity: 0; transform: translateY(-4px) rotate(-.4deg); }
+  to { opacity: 1; transform: translateY(0) rotate(0); }
+}
+.animate-settle { animation: card-settle .3s cubic-bezier(.2,.7,.3,1) both; }
+
+@keyframes pop-in {
+  from { opacity: 0; transform: scale(.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-pop-in { animation: pop-in .16s cubic-bezier(.2,.7,.3,1) both; }
+
+@keyframes scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-scrim-in { animation: scrim-in .16s ease-out both; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-shimmer {
+  background-image: linear-gradient(100deg, transparent 35%, rgba(255,255,255,.7) 50%, transparent 65%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+.animate-spin-slow { animation: spin-slow 1s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-settle,
+  .animate-pop-in,
+  .animate-scrim-in,
+  .animate-shimmer,
+  .animate-spin-slow {
+    animation: none !important;
+  }
+  * { transition-duration: .01ms !important; }
+}
