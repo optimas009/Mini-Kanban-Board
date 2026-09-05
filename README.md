@@ -1,3 +1,5 @@
+[![LIVE DEMONSTRATION](https://img.shields.io/badge/LIVE%20DEMONSTRATION-CLICK%20HERE-brightgreen?style=for-the-badge)]((https://mini-kanban-board-six.vercel.app/))
+
 # Mini Kanban Board
 
 A collaborative Kanban board where users register, create boards, organise work into
